@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RadarCapri</string>
+    <string name="notification_channel_name">Servicio RadarCapri</string>
+    <string name="notification_channel_description">Notificación permanente mientras el servicio de radares está activo</string>
+    <string name="notification_title">RadarCapri activo</string>
+    <string name="notification_stop_action">Detener</string>
+</resources>
