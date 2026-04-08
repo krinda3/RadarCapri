@@ -39,11 +39,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _networkOk = MutableStateFlow(true)
     val networkOk: StateFlow<Boolean> = _networkOk.asStateFlow()
 
+    private val _distanceTraveledKm = MutableStateFlow(0f)
+    val distanceTraveledKm: StateFlow<Float> = _distanceTraveledKm.asStateFlow()
+
+    private val _routePointCount = MutableStateFlow(0)
+    val routePointCount: StateFlow<Int> = _routePointCount.asStateFlow()
+
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             _currentSpeedKmh.value = intent.getFloatExtra(RadarService.EXTRA_SPEED_KMH, 0f)
             _zoneCount.value = intent.getIntExtra(RadarService.EXTRA_ZONE_COUNT, 0)
             _networkOk.value = intent.getBooleanExtra(RadarService.EXTRA_NETWORK_OK, true)
+            _distanceTraveledKm.value = intent.getFloatExtra(RadarService.EXTRA_DISTANCE_KM, 0f)
+            _routePointCount.value = intent.getIntExtra(RadarService.EXTRA_ROUTE_POINT_COUNT, 0)
 
             val cameraId = intent.getStringExtra(RadarService.EXTRA_CAMERA_ID)
             _nearestCamera.value = if (cameraId != null) {
@@ -77,6 +85,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             Intent(getApplication(), RadarService::class.java)
         )
         _serviceRunning.value = true
+        _distanceTraveledKm.value = 0f
+        _routePointCount.value = 0
     }
 
     fun stopService() {
@@ -87,5 +97,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _currentSpeedKmh.value = 0f
         _nearestCamera.value = null
         _zoneCount.value = 0
+    }
+
+    fun saveKml() {
+        val app = getApplication<Application>()
+        app.startService(
+            Intent(app, RadarService::class.java).also { it.action = RadarService.ACTION_SAVE_KML }
+        )
     }
 }

@@ -9,10 +9,14 @@ import android.content.Intent
 import android.location.Location
 import android.media.AudioManager
 import android.media.ToneGenerator
+import android.os.Build
+import android.os.Environment
 import android.os.IBinder
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.util.Log
+import android.widget.Toast
+import androidx.annotation.RequiresApi
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -31,7 +35,18 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+
+// Data class to hold a recorded GPS point for KML export
+data class RoutePoint(
+    val lat: Double,
+    val lng: Double,
+    val timestamp: Long,
+    val speedKmh: Float
+)
 
 class RadarService : Service() {
 
@@ -44,6 +59,7 @@ class RadarService : Service() {
 
     private var tts: TextToSpeech? = null
     private var toneGenerator: ToneGenerator? = null
+    private var passedToneGenerator: ToneGenerator? = null
 
     // In-memory camera list
     @Volatile private var nearbyCameras: List<SpeedCamera> = emptyList()
@@ -54,6 +70,20 @@ class RadarService : Service() {
     // Alert state
     private val recentlyAnnouncedCameras = mutableMapOf<String, Long>()
     private var lastBeepTime = 0L
+    private var lastSpeedLocation: Location? = null
+
+    // --- Feature 2: Distance tracking ---
+    @Volatile private var totalDistanceMeters = 0f
+    private var lastDistanceLocation: Location? = null
+
+    // --- Feature 3: KML route recording ---
+    private val routePoints = mutableListOf<RoutePoint>()
+
+    // --- Feature 6: Passed-radar detection ---
+    // Maps camera ID -> timestamp when it first entered the alert radius
+    private val activeCamerasInRadius = mutableMapOf<String, Long>()
+    // Set of camera IDs for which we already played the pass-by sound
+    private val passedCameraIds = mutableSetOf<String>()
 
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -78,15 +108,38 @@ class RadarService : Service() {
             null
         }
 
+        passedToneGenerator = try {
+            ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80)
+        } catch (e: Exception) {
+            Log.w(TAG, "passedToneGenerator init failed", e)
+            null
+        }
+
         initTts()
         createNotificationChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            ACTION_SAVE_KML -> {
+                serviceScope.launch {
+                    saveKmlFile()
+                }
+                return START_NOT_STICKY
+            }
         }
+
+        // Reset distance and route on fresh start
+        totalDistanceMeters = 0f
+        lastDistanceLocation = null
+        routePoints.clear()
+        activeCamerasInRadius.clear()
+        passedCameraIds.clear()
+        recentlyAnnouncedCameras.clear()
 
         startForeground(NOTIFICATION_ID, buildNotification(0))
         startLocationUpdates()
@@ -98,6 +151,7 @@ class RadarService : Service() {
         tts?.stop()
         tts?.shutdown()
         toneGenerator?.release()
+        passedToneGenerator?.release()
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -111,6 +165,7 @@ class RadarService : Service() {
     private fun startLocationUpdates() {
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2_000L)
             .setMinUpdateIntervalMillis(1_000L)
+            .setMinUpdateDistanceMeters(5f)
             .build()
 
         try {
@@ -141,14 +196,30 @@ class RadarService : Service() {
         val ttsOn = prefsManager.ttsEnabled.first()
         val beepOn = prefsManager.beepEnabled.first()
 
-        val currentSpeedKmh = if (location.hasSpeed()) location.speed * 3.6f else 0f
+        // --- Feature 1: Reliable speed from GPS hardware ---
+        val currentSpeedKmh: Float = computeSpeed(location)
+        lastSpeedLocation = location
+
+        // --- Feature 2: Accumulate distance ---
+        accumulateDistance(location, currentSpeedKmh)
+
+        // --- Feature 3: Record route point ---
+        recordRoutePoint(location, currentSpeedKmh)
 
         if (currentSpeedKmh < minSpeedKmh) {
             broadcastStatus(currentSpeedKmh, null)
             return
         }
 
-        val nearby = ProximityChecker.closestCamera(location, nearbyCameras, alertDistance)
+        // --- Feature 4: Filter cameras by direction ---
+        val vehicleBearing: Float? = if (location.hasBearing()) location.bearing else null
+
+        val filteredCameras = filterCamerasByDirection(nearbyCameras, vehicleBearing)
+
+        val nearby = ProximityChecker.closestCamera(location, filteredCameras, alertDistance)
+
+        // --- Feature 6: Detect passed radars ---
+        handlePassedRadars(location, alertDistance)
 
         broadcastStatus(currentSpeedKmh, nearby?.let { it.camera to it.distanceMeters })
 
@@ -163,13 +234,19 @@ class RadarService : Service() {
         val distanceMeters = nearby.distanceMeters.toInt()
         val now = System.currentTimeMillis()
 
+        // Track this camera as currently active in radius (for pass-by detection)
+        if (!activeCamerasInRadius.containsKey(cam.id)) {
+            activeCamerasInRadius[cam.id] = now
+        }
+
         if (ttsOn) {
             val lastAnnounced = recentlyAnnouncedCameras[cam.id]
             val cooldownExpired = lastAnnounced == null ||
                     (now - lastAnnounced) >= ANNOUNCE_COOLDOWN_MS
 
             if (cooldownExpired) {
-                val text = "Radar ${cam.typeInSpanish} en $distanceMeters metros, " +
+                // Feature 5: Full type name in TTS
+                val text = "${cam.ttsSpeechType} en $distanceMeters metros, " +
                         "límite ${cam.vitesse} kilómetros por hora"
                 speakTts(text)
                 recentlyAnnouncedCameras[cam.id] = now
@@ -183,6 +260,183 @@ class RadarService : Service() {
             }
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Feature 1: Speed computation
+    // -------------------------------------------------------------------------
+
+    private fun computeSpeed(location: Location): Float {
+        val speedValid = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            location.hasSpeed() &&
+                    location.hasSpeedAccuracy() &&
+                    location.speedAccuracyMetersPerSecond < 2.0f
+        } else {
+            location.hasSpeed()
+        }
+
+        return if (speedValid) {
+            location.speed * 3.6f
+        } else {
+            0f
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Feature 2: Distance accumulation
+    // -------------------------------------------------------------------------
+
+    private fun accumulateDistance(location: Location, currentSpeedKmh: Float) {
+        val speedMs = currentSpeedKmh / 3.6f
+        val last = lastDistanceLocation
+
+        if (last != null && location.hasSpeed() && speedMs > 1.5f) {
+            val dist = FloatArray(1)
+            Location.distanceBetween(
+                last.latitude, last.longitude,
+                location.latitude, location.longitude,
+                dist
+            )
+            totalDistanceMeters += dist[0]
+        }
+
+        lastDistanceLocation = location
+    }
+
+    // -------------------------------------------------------------------------
+    // Feature 3: Route point recording
+    // -------------------------------------------------------------------------
+
+    private fun recordRoutePoint(location: Location, speedKmh: Float) {
+        routePoints.add(
+            RoutePoint(
+                lat = location.latitude,
+                lng = location.longitude,
+                timestamp = System.currentTimeMillis(),
+                speedKmh = speedKmh
+            )
+        )
+    }
+
+    private fun saveKmlFile() {
+        val points = routePoints.toList()
+        if (points.isEmpty()) {
+            serviceScope.launch(Dispatchers.Main) {
+                Toast.makeText(this@RadarService, "No hay puntos de ruta grabados", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        val sdf = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.getDefault())
+        val dateStr = sdf.format(Date())
+        val fileName = "RadarCapri_$dateStr.kml"
+
+        val dir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+        if (dir == null) {
+            Log.e(TAG, "External documents directory not available")
+            return
+        }
+        dir.mkdirs()
+        val file = File(dir, fileName)
+
+        val sb = StringBuilder()
+        sb.appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
+        sb.appendLine("""<kml xmlns="http://www.opengis.net/kml/2.2">""")
+        sb.appendLine("  <Document>")
+        sb.appendLine("    <name>RadarCapri_$dateStr</name>")
+        sb.appendLine("    <Placemark>")
+        sb.appendLine("      <name>Ruta</name>")
+        sb.appendLine("      <LineString>")
+        sb.appendLine("        <coordinates>")
+        for (p in points) {
+            sb.appendLine("          ${p.lng},${p.lat},0")
+        }
+        sb.appendLine("        </coordinates>")
+        sb.appendLine("      </LineString>")
+        sb.appendLine("    </Placemark>")
+        sb.appendLine("  </Document>")
+        sb.appendLine("</kml>")
+
+        try {
+            file.writeText(sb.toString())
+            val path = file.absolutePath
+            serviceScope.launch(Dispatchers.Main) {
+                Toast.makeText(this@RadarService, "KML guardado: $path", Toast.LENGTH_LONG).show()
+            }
+            Log.i(TAG, "KML saved to $path")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving KML", e)
+            serviceScope.launch(Dispatchers.Main) {
+                Toast.makeText(this@RadarService, "Error al guardar KML: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Feature 4: Direction filtering
+    // -------------------------------------------------------------------------
+
+    private fun filterCamerasByDirection(
+        cameras: List<SpeedCamera>,
+        vehicleBearing: Float?
+    ): List<SpeedCamera> {
+        // If we don't know the bearing (low speed), show all radars
+        if (vehicleBearing == null) return cameras
+        return cameras.filter { cam ->
+            // If radar has no azimut, always show it
+            if (!cam.hasAzimut) return@filter true
+            // Keep radar only if difference <= 90 degrees
+            angleDiff(vehicleBearing, cam.azimut) <= 90f
+        }
+    }
+
+    private fun angleDiff(a: Float, b: Float): Float {
+        var diff = Math.abs(a - b) % 360f
+        if (diff > 180f) diff = 360f - diff
+        return diff
+    }
+
+    // -------------------------------------------------------------------------
+    // Feature 6: Passed-radar sound
+    // -------------------------------------------------------------------------
+
+    private fun handlePassedRadars(location: Location, alertDistance: Float) {
+        val now = System.currentTimeMillis()
+        val PASS_THRESHOLD_M = 350f
+        val ACTIVE_WINDOW_MS = 30_000L
+
+        // Find cameras that were recently active (in radius) but are now beyond PASS_THRESHOLD_M
+        val iterator = activeCamerasInRadius.entries.iterator()
+        while (iterator.hasNext()) {
+            val (camId, enteredAt) = iterator.next()
+            val cam = nearbyCameras.find { it.id == camId } ?: run {
+                // Camera no longer in list (route change) — remove without sound
+                iterator.remove()
+                passedCameraIds.remove(camId)
+                continue
+            }
+
+            val dist = FloatArray(1)
+            Location.distanceBetween(
+                location.latitude, location.longitude,
+                cam.lat, cam.lng,
+                dist
+            )
+
+            if (dist[0] > PASS_THRESHOLD_M) {
+                // Camera is now beyond threshold
+                val wasRecentlyActive = (now - enteredAt) <= ACTIVE_WINDOW_MS
+                if (wasRecentlyActive && !passedCameraIds.contains(camId)) {
+                    playPassedRadarSound()
+                    passedCameraIds.add(camId)
+                }
+                iterator.remove()
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Refresh cameras
+    // -------------------------------------------------------------------------
 
     private suspend fun maybeRefreshCameras(location: Location) {
         val now = System.currentTimeMillis()
@@ -241,11 +495,15 @@ class RadarService : Service() {
     }
 
     // -------------------------------------------------------------------------
-    // Beep
+    // Beep / Tones
     // -------------------------------------------------------------------------
 
     private fun playBeep() {
         toneGenerator?.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 500)
+    }
+
+    private fun playPassedRadarSound() {
+        passedToneGenerator?.startTone(ToneGenerator.TONE_CDMA_ABBR_REORDER, 600)
     }
 
     // -------------------------------------------------------------------------
@@ -257,6 +515,8 @@ class RadarService : Service() {
             putExtra(EXTRA_SPEED_KMH, speedKmh)
             putExtra(EXTRA_ZONE_COUNT, nearbyCameras.size)
             putExtra(EXTRA_NETWORK_OK, networkOk)
+            putExtra(EXTRA_DISTANCE_KM, totalDistanceMeters / 1000f)
+            putExtra(EXTRA_ROUTE_POINT_COUNT, routePoints.size)
             if (nearest != null) {
                 putExtra(EXTRA_CAMERA_ID, nearest.first.id)
                 putExtra(EXTRA_CAMERA_NAME, nearest.first.name)
@@ -319,6 +579,7 @@ class RadarService : Service() {
 
         const val ACTION_STOP = "com.pridalac.radarcapri.ACTION_STOP"
         const val ACTION_STATUS_UPDATE = "com.pridalac.radarcapri.STATUS_UPDATE"
+        const val ACTION_SAVE_KML = "com.pridalac.radarcapri.ACTION_SAVE_KML"
 
         const val EXTRA_SPEED_KMH = "speed_kmh"
         const val EXTRA_ZONE_COUNT = "zone_count"
@@ -328,6 +589,8 @@ class RadarService : Service() {
         const val EXTRA_CAMERA_TYPE = "camera_type"
         const val EXTRA_CAMERA_DISTANCE = "camera_distance"
         const val EXTRA_CAMERA_SPEED_LIMIT = "camera_speed_limit"
+        const val EXTRA_DISTANCE_KM = "distance_km"
+        const val EXTRA_ROUTE_POINT_COUNT = "route_point_count"
 
         private const val ANNOUNCE_COOLDOWN_MS = 30_000L
         private const val BEEP_INTERVAL_MS = 5_000L

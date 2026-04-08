@@ -11,7 +11,8 @@ data class LufopCamera(
     @SerializedName("commune") val commune: String?,
     @SerializedName("voie") val voie: String?,
     @SerializedName("vitesse") val vitesse: String?,
-    @SerializedName("typeradar") val typeradar: String?
+    @SerializedName("typeradar") val typeradar: String?,
+    @SerializedName("azimut") val azimut: Float?
 )
 
 typealias LufopResponse = List<LufopCamera>

@@ -22,7 +22,8 @@ class RadarRepository(
                     commune = cam.commune ?: "",
                     voie = cam.voie ?: "",
                     vitesse = cam.vitesse?.toIntOrNull() ?: 0,
-                    typeradar = cam.typeradar ?: ""
+                    typeradar = cam.typeradar ?: "",
+                    azimut = cam.azimut ?: -1f
                 )
             }
             Result.success(cameras)

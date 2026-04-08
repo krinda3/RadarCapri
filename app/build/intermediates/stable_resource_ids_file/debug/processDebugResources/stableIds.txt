@@ -1,3 +1,4 @@
+com.pridalac.radarcapri:xml/file_provider_paths = 0x7f0c0000
 com.pridalac.radarcapri:styleable/LoadingImageView = 0x7f0b0006
 com.pridalac.radarcapri:styleable/GradientColorItem = 0x7f0b0005
 com.pridalac.radarcapri:styleable/ColorStateListItem = 0x7f0b0001
@@ -171,7 +172,7 @@ com.pridalac.radarcapri:attr/windowSplashScreenBackground = 0x7f01001c
 com.pridalac.radarcapri:drawable/ic_call_answer_low = 0x7f040018
 com.pridalac.radarcapri:color/call_notification_answer_color = 0x7f020003
 com.pridalac.radarcapri:drawable/ic_call_answer = 0x7f040017
-com.pridalac.radarcapri:xml/network_security_config = 0x7f0c0000
+com.pridalac.radarcapri:xml/network_security_config = 0x7f0c0001
 com.pridalac.radarcapri:id/accessibility_custom_action_26 = 0x7f050014
 com.pridalac.radarcapri:color/androidx_core_ripple_material_light = 0x7f020000
 com.pridalac.radarcapri:drawable/googleg_standard_color_18 = 0x7f040016

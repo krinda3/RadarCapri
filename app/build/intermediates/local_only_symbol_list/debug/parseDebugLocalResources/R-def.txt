@@ -16,4 +16,5 @@ string notification_stop_action
 string notification_title
 style Theme.RadarCapri
 style Theme.RadarCapri.SplashScreen
+xml file_provider_paths
 xml network_security_config

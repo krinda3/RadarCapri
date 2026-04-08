@@ -25,6 +25,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -53,6 +54,8 @@ fun MainScreen(
     val nearestCamera by viewModel.nearestCamera.collectAsStateWithLifecycle()
     val zoneCount by viewModel.zoneCount.collectAsStateWithLifecycle()
     val networkOk by viewModel.networkOk.collectAsStateWithLifecycle()
+    val distanceKm by viewModel.distanceTraveledKm.collectAsStateWithLifecycle()
+    val routePointCount by viewModel.routePointCount.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -94,6 +97,8 @@ fun MainScreen(
 
             NearestCameraCard(nearestCamera = nearestCamera)
 
+            DistanceCard(distanceKm = distanceKm, serviceRunning = serviceRunning)
+
             Button(
                 onClick = { if (serviceRunning) viewModel.stopService() else viewModel.startService() },
                 modifier = Modifier
@@ -111,6 +116,24 @@ fun MainScreen(
                     text = if (serviceRunning) "Detener servicio" else "Iniciar servicio",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
+                )
+            }
+
+            // KML export button — always visible, enabled only when route has points
+            OutlinedButton(
+                onClick = { viewModel.saveKml() },
+                enabled = routePointCount > 0,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = if (routePointCount > 0)
+                        "Guardar ruta KML ($routePointCount pts)"
+                    else
+                        "Guardar ruta KML",
+                    fontSize = 15.sp
                 )
             }
 
@@ -175,6 +198,38 @@ private fun SpeedDisplay(speedKmh: Float, serviceRunning: Boolean) {
                 text = "km/h",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun DistanceCard(distanceKm: Float, serviceRunning: Boolean) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Distancia recorrida",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = if (serviceRunning) "${"%.1f".format(distanceKm)} km" else "-- km",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
     }
