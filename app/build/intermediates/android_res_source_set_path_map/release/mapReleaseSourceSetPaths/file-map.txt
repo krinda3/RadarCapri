@@ -1,8 +1,0 @@
-com.pridalac.radarcapri.app-pngs-0 /home/javier/Proyectos/RadarCapri/app/build/generated/res/pngs/release
-com.pridalac.radarcapri.app-resValues-1 /home/javier/Proyectos/RadarCapri/app/build/generated/res/resValues/release
-com.pridalac.radarcapri.app-updated_navigation_xml-2 /home/javier/Proyectos/RadarCapri/app/build/generated/updated_navigation_xml/release
-com.pridalac.radarcapri.app-packageReleaseResources-3 /home/javier/Proyectos/RadarCapri/app/build/intermediates/incremental/release/packageReleaseResources/merged.dir
-com.pridalac.radarcapri.app-packageReleaseResources-4 /home/javier/Proyectos/RadarCapri/app/build/intermediates/incremental/release/packageReleaseResources/stripped.dir
-com.pridalac.radarcapri.app-release-5 /home/javier/Proyectos/RadarCapri/app/build/intermediates/merged_res/release/mergeReleaseResources
-com.pridalac.radarcapri.app-main-6 /home/javier/Proyectos/RadarCapri/app/src/main/res
-com.pridalac.radarcapri.app-release-7 /home/javier/Proyectos/RadarCapri/app/src/release/res

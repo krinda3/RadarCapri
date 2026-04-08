@@ -1,0 +1,33 @@
+# Build
+build/
+app/build/
+app/release/
+
+# Gradle
+.gradle/
+gradle/wrapper/gradle-wrapper.jar
+
+# Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+local.properties
+
+# Keystore y credenciales sensibles
+*.jks
+*.keystore
+google-services.json
+secrets.properties
+
+# APKs y archivos de salida
+*.apk
+*.aab
+*.ap_
+
+# Kotlin
+.kotlin/
+
+# OS
+.DS_Store
+Thumbs.db

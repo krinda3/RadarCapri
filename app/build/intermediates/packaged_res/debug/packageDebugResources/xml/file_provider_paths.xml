@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<paths>
-    <!-- External Documents directory for KML files -->
-    <external-files-path
-        name="documents"
-        path="Documents/" />
-</paths>
