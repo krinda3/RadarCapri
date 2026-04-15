@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.RadarCapri" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">@color/green_primary</item>
+        <item name="android:colorPrimaryDark">@color/green_dark</item>
+        <item name="android:statusBarColor">@color/green_dark</item>
+    </style>
+
+    <style name="Theme.RadarCapri.SplashScreen" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/green_dark</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.RadarCapri</item>
+    </style>
+</resources>

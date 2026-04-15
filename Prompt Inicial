@@ -1,0 +1,106 @@
+Prompt para Claude Code
+Crea una app Android llamada RadarCapri con las siguientes especificaciones:
+
+## Datos generales
+- Nombre: RadarCapri
+- Package: com.pridalac.radarcapri
+- Lenguaje: Kotlin + Jetpack Compose
+- MinSDK: 26, TargetSDK: 35
+- Tema de color: verde pistacho (#7CB342 primary, #558B2F dark)
+
+## Funcionalidad principal
+App de aviso de radares de tráfico en España. Sin mapa. 
+Solo audio y notificaciones. Debe funcionar en background 
+con pantalla apagada mediante un Foreground Service.
+
+## Fuente de datos — Lufop API
+- Base URL: https://api.lufop.net
+- API Key: 469a28a4863c8291e7d3b3ca5226c75e
+- Llamada para obtener radares de España:
+  GET /api/?key=469a28a4863c8291e7d3b3ca5226c75e&country=ES
+- La respuesta JSON incluye por cada radar:
+  id, name, type (fixed/mobile/average_speed), 
+  lat, lon, speed (límite en km/h), city, street
+- Almacenar en base de datos local Room (entidad SpeedCamera)
+- Sincronización automática via WorkManager: una vez al día
+- Sincronización manual desde la UI con botón "Actualizar radares"
+- Mostrar en UI: fecha última sync y número total de radares cargados
+
+## Lógica de conducción
+- Obtener ubicación GPS continua via FusedLocationProviderClient
+  (intervalo 2 segundos, alta precisión)
+- Calcular distancia a todos los radares de la BD local
+- Si distancia <= 300 metros a cualquier radar:
+  → Aviso TTS: "Radar [tipo] en [distancia] metros, 
+     límite [velocidad] kilómetros por hora"
+  → Tipos en español: 
+     fixed="fijo", mobile="móvil", average_speed="de tramo"
+  → No repetir el mismo aviso hasta pasados 30 segundos
+    o hasta que el radar quede fuera del radio de 500 metros
+- Si velocidad GPS actual > límite del radar más cercano (<300m):
+  → Pitido de alerta (AudioManager/ToneGenerator, tono CDMA_ALERT_CALL_GUARD)
+  → Repetir pitido cada 5 segundos mientras se mantenga la condición
+
+## Foreground Service
+- RadarService: Foreground Service que mantiene GPS y lógica activos
+- Notificación persistente mostrando:
+  "RadarCapri activo — X radares cargados"
+- Botón en notificación para detener el servicio
+- Se inicia automáticamente al pulsar "Iniciar" en la UI
+- Canal de notificación: "radar_service_channel"
+
+## Pantalla principal (única pantalla)
+Composable MainScreen con:
+- Indicador de estado: "Servicio activo" / "Servicio detenido" (con color)
+- Velocidad actual en km/h (grande, actualizada en tiempo real)
+- Radar más cercano actualmente (nombre, tipo, distancia, límite)
+  o "Sin radares cercanos" si no hay ninguno en 1 km
+- Botón "Iniciar" / "Detener" servicio
+- Sección de base de datos:
+  - "Radares cargados: X (última sync: DD/MM/YYYY HH:mm)"
+  - Botón "Actualizar radares" (con indicador de carga)
+- Botón "Configuración" (abre ConfigScreen)
+
+## Pantalla de configuración (ConfigScreen)
+- Distancia de aviso: Slider de 100 a 1000 metros (default 300)
+- Velocidad mínima para activar avisos: Slider 0-30 km/h (default 5)
+  (para no avisar cuando estamos parados o en parking)
+- Toggle: Avisos TTS activados/desactivados
+- Toggle: Pitido por exceso de velocidad activado/desactivado
+- Guardar con SharedPreferences o DataStore
+
+## Permisos necesarios
+- ACCESS_FINE_LOCATION
+- ACCESS_COARSE_LOCATION  
+- ACCESS_BACKGROUND_LOCATION
+- FOREGROUND_SERVICE
+- FOREGROUND_SERVICE_LOCATION
+- INTERNET
+- WAKE_LOCK
+- POST_NOTIFICATIONS (Android 13+)
+
+## Dependencias principales
+- Jetpack Compose BOM última estable
+- Room (base de datos local)
+- WorkManager (sync periódica)
+- Retrofit + Gson (llamadas API)
+- FusedLocationProviderClient (play-services-location)
+- Kotlin Coroutines + Flow
+- DataStore Preferences (configuración)
+
+## Arquitectura
+- MVVM: MainViewModel, RadarRepository, RadarDatabase
+- RadarDao con consulta para obtener radares 
+  dentro de bounding box geográfico (optimización)
+- Separar lógica de proximidad en ProximityChecker utility class
+
+## Notas importantes
+- La app debe ser robusta ante fallos de red 
+  (usar siempre la BD local aunque falle la sync)
+- Gestionar correctamente el ciclo de vida del servicio
+  (no duplicar instancias)
+- Solicitar permisos de ubicación en foreground y background
+  siguiendo el flujo recomendado por Android 
+  (primero foreground, luego background en petición separada)
+- No incluir ningún mapa ni dependencia de mapas
+- No incluir código de Android Auto (se añadirá en el futuro)
