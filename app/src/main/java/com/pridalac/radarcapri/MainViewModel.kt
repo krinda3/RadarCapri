@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.pridalac.radarcapri.data.RadarRepository
 import com.pridalac.radarcapri.preferences.PreferencesManager
 import com.pridalac.radarcapri.service.RadarService
 import com.pridalac.radarcapri.service.ServiceStateHolder
@@ -22,6 +23,20 @@ data class NearestCameraUiState(
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val prefs = PreferencesManager(application)
+    private val repository = RadarRepository(application)
+
+    private val _radarCount = MutableStateFlow(0)
+    val radarCount: StateFlow<Int> = _radarCount.asStateFlow()
+
+    /** Fecha de la última descarga (ms), o null si solo se usa la base incluida en la app. */
+    private val _lastDownload = MutableStateFlow<Long?>(null)
+    val lastDownload: StateFlow<Long?> = _lastDownload.asStateFlow()
+
+    private val _downloading = MutableStateFlow(false)
+    val downloading: StateFlow<Boolean> = _downloading.asStateFlow()
+
+    private val _downloadMessage = MutableStateFlow<String?>(null)
+    val downloadMessage: StateFlow<String?> = _downloadMessage.asStateFlow()
 
     private val _serviceRunning = MutableStateFlow(false)
     val serviceRunning: StateFlow<Boolean> = _serviceRunning.asStateFlow()
@@ -45,6 +60,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val routePointCount: StateFlow<Int> = _routePointCount.asStateFlow()
 
     init {
+        refreshDbInfo()
         // Observar el StateFlow compartido del servicio
         viewModelScope.launch {
             ServiceStateHolder.state.collect { state ->
@@ -90,5 +106,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         app.startService(
             Intent(app, RadarService::class.java).also { it.action = RadarService.ACTION_SAVE_KML }
         )
+    }
+
+    private fun refreshDbInfo() {
+        viewModelScope.launch {
+            _radarCount.value = repository.loadLocal().size
+            _lastDownload.value = repository.lastDownload()
+        }
+    }
+
+    fun downloadRadars() {
+        if (_downloading.value) return
+        viewModelScope.launch {
+            _downloading.value = true
+            _downloadMessage.value = null
+            repository.download()
+                .onSuccess { count ->
+                    _radarCount.value = count
+                    _lastDownload.value = repository.lastDownload()
+                    _downloadMessage.value = "Descargados $count radares"
+                }
+                .onFailure {
+                    _downloadMessage.value = "No se pudo descargar. Se mantiene la base anterior."
+                }
+            _downloading.value = false
+        }
     }
 }

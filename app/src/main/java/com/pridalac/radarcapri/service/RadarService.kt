@@ -63,9 +63,7 @@ class RadarService : Service() {
 
     // In-memory camera list
     @Volatile private var nearbyCameras: List<SpeedCamera> = emptyList()
-    @Volatile private var networkOk = true
-    @Volatile private var lastQueryTimestamp = 0L
-    @Volatile private var lastQueryLocation: Location? = null
+    @Volatile private var loadedStamp = -1L
 
     // Alert state
     private val recentlyAnnouncedCameras = mutableMapOf<String, Long>()
@@ -97,7 +95,7 @@ class RadarService : Service() {
     override fun onCreate() {
         super.onCreate()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        repository = RadarRepository()
+        repository = RadarRepository(this)
         prefsManager = PreferencesManager(this)
         notificationManager = getSystemService(NotificationManager::class.java)
 
@@ -122,6 +120,11 @@ class RadarService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
+                serviceScope.launch {
+                    if (routePoints.isNotEmpty()) {
+                        saveKmlFile()
+                    }
+                }
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -189,7 +192,7 @@ class RadarService : Service() {
     // -------------------------------------------------------------------------
 
     private suspend fun processLocation(location: Location) {
-        maybeRefreshCameras(location)
+        maybeReloadCameras()
 
         val alertDistance = prefsManager.alertDistance.first()
         val minSpeedKmh = prefsManager.minSpeed.first()
@@ -444,38 +447,15 @@ class RadarService : Service() {
     }
 
     // -------------------------------------------------------------------------
-    // Refresh cameras
+    // Carga de la base local
     // -------------------------------------------------------------------------
 
-    private suspend fun maybeRefreshCameras(location: Location) {
-        val now = System.currentTimeMillis()
-        val lastLoc = lastQueryLocation
-
-        val shouldQuery = if (lastLoc == null) {
-            true
-        } else {
-            val tmp = FloatArray(1)
-            Location.distanceBetween(
-                lastLoc.latitude, lastLoc.longitude,
-                location.latitude, location.longitude,
-                tmp
-            )
-            tmp[0] >= LOCATION_REFRESH_THRESHOLD_M &&
-                    (now - lastQueryTimestamp) >= MIN_QUERY_INTERVAL_MS
-        }
-
-        if (!shouldQuery) return
-
-        lastQueryLocation = location
-        lastQueryTimestamp = now
-
-        val result = repository.fetchNearby(location.latitude, location.longitude)
-        if (result.isSuccess) {
-            nearbyCameras = result.getOrElse { emptyList() }
-            networkOk = true
-        } else {
-            networkOk = false
-        }
+    /** Carga la base local la primera vez y cada vez que se descarga una nueva. */
+    private suspend fun maybeReloadCameras() {
+        val stamp = repository.stamp()
+        if (stamp == loadedStamp) return
+        loadedStamp = stamp
+        nearbyCameras = repository.loadLocal()
         notificationManager.notify(NOTIFICATION_ID, buildNotification(nearbyCameras.size))
     }
 
@@ -523,7 +503,7 @@ class RadarService : Service() {
         ServiceStateHolder.updateCamera(
             speedKmh = speedKmh,
             zoneCount = nearbyCameras.size,
-            networkOk = networkOk,
+            networkOk = true,
             distanceKm = totalDistanceMeters / 1000f,
             routePointCount = routePoints.size,
             camera = nearest?.first,
@@ -561,7 +541,7 @@ class RadarService : Service() {
 
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
-            .setContentText("$zoneCount radares en zona")
+            .setContentText("$zoneCount radares cargados")
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(tapIntent)
             .setOngoing(true)
@@ -585,7 +565,5 @@ class RadarService : Service() {
 
         private const val ANNOUNCE_COOLDOWN_MS = 30_000L
         private const val BEEP_INTERVAL_MS = 5_000L
-        private const val LOCATION_REFRESH_THRESHOLD_M = 500f
-        private const val MIN_QUERY_INTERVAL_MS = 30_000L
     }
 }

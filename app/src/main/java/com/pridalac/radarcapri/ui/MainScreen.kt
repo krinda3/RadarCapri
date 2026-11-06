@@ -41,6 +41,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pridalac.radarcapri.MainViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,8 +55,10 @@ fun MainScreen(
     val serviceRunning by viewModel.serviceRunning.collectAsStateWithLifecycle()
     val speedKmh by viewModel.currentSpeedKmh.collectAsStateWithLifecycle()
     val nearestCamera by viewModel.nearestCamera.collectAsStateWithLifecycle()
-    val zoneCount by viewModel.zoneCount.collectAsStateWithLifecycle()
-    val networkOk by viewModel.networkOk.collectAsStateWithLifecycle()
+    val radarCount by viewModel.radarCount.collectAsStateWithLifecycle()
+    val lastDownload by viewModel.lastDownload.collectAsStateWithLifecycle()
+    val downloading by viewModel.downloading.collectAsStateWithLifecycle()
+    val downloadMessage by viewModel.downloadMessage.collectAsStateWithLifecycle()
     val distanceKm by viewModel.distanceTraveledKm.collectAsStateWithLifecycle()
     val routePointCount by viewModel.routePointCount.collectAsStateWithLifecycle()
 
@@ -137,7 +142,13 @@ fun MainScreen(
                 )
             }
 
-            ZoneSection(zoneCount = zoneCount, networkOk = networkOk)
+            DatabaseSection(
+                radarCount = radarCount,
+                lastDownload = lastDownload,
+                downloading = downloading,
+                message = downloadMessage,
+                onDownload = viewModel::downloadRadars
+            )
         }
     }
 }
@@ -284,7 +295,13 @@ private fun NearestCameraCard(nearestCamera: com.pridalac.radarcapri.NearestCame
 }
 
 @Composable
-private fun ZoneSection(zoneCount: Int, networkOk: Boolean) {
+private fun DatabaseSection(
+    radarCount: Int,
+    lastDownload: Long?,
+    downloading: Boolean,
+    message: String?,
+    onDownload: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -297,31 +314,46 @@ private fun ZoneSection(zoneCount: Int, networkOk: Boolean) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "Zona actual",
+                text = "Base de radares",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "Radares en zona: $zoneCount",
+                text = "Radares cargados: $radarCount",
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold
             )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            Text(
+                text = if (lastDownload != null)
+                    "Última descarga: " + SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("es", "ES")).format(Date(lastDownload))
+                else
+                    "Base incluida en la app (sin descargas todavía)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "DGT, Cataluña y OpenStreetMap (incluye Madrid y País Vasco)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Button(
+                onClick = onDownload,
+                enabled = !downloading,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .background(
-                            color = if (networkOk) Color(0xFF4CAF50) else Color(0xFFF44336),
-                            shape = CircleShape
-                        )
-                )
                 Text(
-                    text = if (networkOk) "Datos actualizados" else "Sin conexión - usando datos anteriores",
+                    text = if (downloading) "Descargando…" else "Descargar radares",
+                    fontSize = 15.sp
+                )
+            }
+            if (message != null) {
+                Text(
+                    text = message,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (networkOk) Color(0xFF2E7D32) else Color(0xFFC62828)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
         }

@@ -55,11 +55,8 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
-    // Retrofit
-    implementation(libs.retrofit)
-    implementation(libs.retrofit.converter.gson)
+    // Descarga de la base de radares
     implementation(libs.okhttp)
-    implementation(libs.okhttp.logging)
     implementation(libs.gson)
     // Location
     implementation(libs.play.services.location)
