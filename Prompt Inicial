@@ -15,9 +15,9 @@ con pantalla apagada mediante un Foreground Service.
 
 ## Fuente de datos — Lufop API
 - Base URL: https://api.lufop.net
-- API Key: 469a28a4863c8291e7d3b3ca5226c75e
+- API Key: <API_KEY>
 - Llamada para obtener radares de España:
-  GET /api/?key=469a28a4863c8291e7d3b3ca5226c75e&country=ES
+  GET /api/?key=<API_KEY>&country=ES
 - La respuesta JSON incluye por cada radar:
   id, name, type (fixed/mobile/average_speed), 
   lat, lon, speed (límite en km/h), city, street
