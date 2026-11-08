@@ -17,11 +17,13 @@ class PreferencesManager(private val context: Context) {
         val KEY_MIN_SPEED = floatPreferencesKey("min_speed_kmh")
         val KEY_TTS_ENABLED = booleanPreferencesKey("tts_enabled")
         val KEY_BEEP_ENABLED = booleanPreferencesKey("beep_enabled")
+        val KEY_AUTO_START = booleanPreferencesKey("auto_start")
 
         const val DEFAULT_ALERT_DISTANCE = 300f
         const val DEFAULT_MIN_SPEED = 5f
         const val DEFAULT_TTS_ENABLED = true
         const val DEFAULT_BEEP_ENABLED = true
+        const val DEFAULT_AUTO_START = true
     }
 
     val alertDistance: Flow<Float> = context.dataStore.data
@@ -35,6 +37,13 @@ class PreferencesManager(private val context: Context) {
 
     val beepEnabled: Flow<Boolean> = context.dataStore.data
         .map { it[KEY_BEEP_ENABLED] ?: DEFAULT_BEEP_ENABLED }
+
+    val autoStart: Flow<Boolean> = context.dataStore.data
+        .map { it[KEY_AUTO_START] ?: DEFAULT_AUTO_START }
+
+    suspend fun setAutoStart(value: Boolean) {
+        context.dataStore.edit { it[KEY_AUTO_START] = value }
+    }
 
     suspend fun setAlertDistance(value: Float) {
         context.dataStore.edit { it[KEY_ALERT_DISTANCE] = value }

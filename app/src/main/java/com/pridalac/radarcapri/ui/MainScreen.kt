@@ -1,5 +1,10 @@
 package com.pridalac.radarcapri.ui
 
+import androidx.compose.animation.animateColor
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -248,9 +253,20 @@ private fun DistanceCard(distanceKm: Float, serviceRunning: Boolean) {
 
 @Composable
 private fun NearestCameraCard(nearestCamera: com.pridalac.radarcapri.NearestCameraUiState?) {
+    // Parpadea mientras hay un radar por delante; se detiene al pasarlo (nearestCamera == null)
+    val blink by rememberInfiniteTransition(label = "parpadeo").animateColor(
+        initialValue = Color(0xFFFFE0B2),
+        targetValue = Color(0xFFFF8A65),
+        animationSpec = infiniteRepeatable(tween(450), RepeatMode.Reverse),
+        label = "colorParpadeo"
+    )
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
+        colors = if (nearestCamera != null)
+            CardDefaults.cardColors(containerColor = blink, contentColor = Color(0xFF212121))
+        else
+            CardDefaults.cardColors(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
@@ -261,7 +277,7 @@ private fun NearestCameraCard(nearestCamera: com.pridalac.radarcapri.NearestCame
             Text(
                 text = "Radar cercano",
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (nearestCamera != null) Color(0xFF212121) else MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -282,12 +298,17 @@ private fun NearestCameraCard(nearestCamera: com.pridalac.radarcapri.NearestCame
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    InfoChip(label = "Tipo", value = nearestCamera.type)
+                    InfoChip(label = "Tipo", value = nearestCamera.type, onAlert = true)
                     InfoChip(
                         label = "Distancia",
-                        value = "${nearestCamera.distanceMeters.roundToInt()} m"
+                        value = "${nearestCamera.distanceMeters.roundToInt()} m",
+                        onAlert = true
                     )
-                    InfoChip(label = "Límite", value = "${nearestCamera.speedLimit} km/h")
+                    InfoChip(
+                        label = "Límite",
+                        value = if (nearestCamera.speedLimit > 0) "${nearestCamera.speedLimit} km/h" else "--",
+                        onAlert = true
+                    )
                 }
             }
         }
@@ -361,18 +382,18 @@ private fun DatabaseSection(
 }
 
 @Composable
-private fun InfoChip(label: String, value: String) {
+private fun InfoChip(label: String, value: String, onAlert: Boolean = false) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (onAlert) Color(0xFF424242) else MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary
+            color = if (onAlert) Color(0xFF212121) else MaterialTheme.colorScheme.primary
         )
     }
 }

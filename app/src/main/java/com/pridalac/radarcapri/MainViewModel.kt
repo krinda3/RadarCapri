@@ -11,6 +11,7 @@ import com.pridalac.radarcapri.service.ServiceStateHolder
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 data class NearestCameraUiState(
@@ -38,7 +39,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _downloadMessage = MutableStateFlow<String?>(null)
     val downloadMessage: StateFlow<String?> = _downloadMessage.asStateFlow()
 
-    private val _serviceRunning = MutableStateFlow(false)
+    private val _serviceRunning = MutableStateFlow(ServiceStateHolder.running)
     val serviceRunning: StateFlow<Boolean> = _serviceRunning.asStateFlow()
 
     private val _currentSpeedKmh = MutableStateFlow(0f)
@@ -78,6 +79,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
             }
+        }
+    }
+
+    /** Arranca el servicio al abrir la app si la opción está activada y no está ya en marcha. */
+    fun autoStartIfEnabled() {
+        viewModelScope.launch {
+            if (!ServiceStateHolder.running && prefs.autoStart.first()) startService()
         }
     }
 

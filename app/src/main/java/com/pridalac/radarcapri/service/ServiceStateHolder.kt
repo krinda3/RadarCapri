@@ -16,6 +16,9 @@ data class ServiceState(
 )
 
 object ServiceStateHolder {
+    /** True mientras RadarService está en marcha (sobrevive a recrear la Activity). */
+    @Volatile var running: Boolean = false
+
     private val _state = MutableStateFlow(ServiceState())
     val state: StateFlow<ServiceState> = _state.asStateFlow()
 

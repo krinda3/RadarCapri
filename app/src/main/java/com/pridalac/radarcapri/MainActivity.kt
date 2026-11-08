@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
     ) { grants ->
         val fineGranted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true
         if (fineGranted) {
+            viewModel.autoStartIfEnabled()
             // Step 2: background location (must be a separate request on Android 10+)
             requestBackgroundLocationIfNeeded()
         }
@@ -47,6 +48,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         requestPermissionsIfNeeded()
+
+        // Arranque automático del servicio al abrir la app (si ya hay permiso de ubicación)
+        if (savedInstanceState == null && ContextCompat.checkSelfPermission(
+                this, Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            viewModel.autoStartIfEnabled()
+        }
 
         setContent {
             RadarCapriTheme {

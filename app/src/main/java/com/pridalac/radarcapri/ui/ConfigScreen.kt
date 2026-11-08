@@ -42,6 +42,7 @@ fun ConfigScreen(
     val alertDistance by viewModel.prefs.alertDistance.collectAsStateWithLifecycle(initialValue = 300f)
     val minSpeed by viewModel.prefs.minSpeed.collectAsStateWithLifecycle(initialValue = 5f)
     val ttsEnabled by viewModel.prefs.ttsEnabled.collectAsStateWithLifecycle(initialValue = true)
+    val autoStart by viewModel.prefs.autoStart.collectAsStateWithLifecycle(initialValue = true)
     val beepEnabled by viewModel.prefs.beepEnabled.collectAsStateWithLifecycle(initialValue = true)
 
     Scaffold(
@@ -146,6 +147,16 @@ fun ConfigScreen(
                 subtitle = "Suena cada 5 s si superas el límite del radar",
                 checked = beepEnabled,
                 onCheckedChange = { scope.launch { viewModel.prefs.setBeepEnabled(it) } }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // --- Auto start toggle ---
+            SettingsToggleRow(
+                title = "Iniciar al abrir la app",
+                subtitle = "El servicio de avisos arranca solo al abrir RadarCapri",
+                checked = autoStart,
+                onCheckedChange = { scope.launch { viewModel.prefs.setAutoStart(it) } }
             )
         }
     }

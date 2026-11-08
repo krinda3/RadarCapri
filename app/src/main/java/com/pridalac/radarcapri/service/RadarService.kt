@@ -28,7 +28,11 @@ import com.pridalac.radarcapri.R
 import com.pridalac.radarcapri.data.RadarRepository
 import com.pridalac.radarcapri.data.SpeedCamera
 import com.pridalac.radarcapri.preferences.PreferencesManager
+import com.pridalac.radarcapri.util.NearbyCamera
 import com.pridalac.radarcapri.util.ProximityChecker
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -144,12 +148,14 @@ class RadarService : Service() {
         passedCameraIds.clear()
         recentlyAnnouncedCameras.clear()
 
+        ServiceStateHolder.running = true
         startForeground(NOTIFICATION_ID, buildNotification(0))
         startLocationUpdates()
         return START_STICKY
     }
 
     override fun onDestroy() {
+        ServiceStateHolder.running = false
         stopLocationUpdates()
         tts?.stop()
         tts?.shutdown()
@@ -214,12 +220,8 @@ class RadarService : Service() {
             return
         }
 
-        // --- Feature 4: Filter cameras by direction ---
-        val vehicleBearing: Float? = if (location.hasBearing()) location.bearing else null
-
-        val filteredCameras = filterCamerasByDirection(nearbyCameras, vehicleBearing)
-
-        val nearby = ProximityChecker.closestCamera(location, filteredCameras, alertDistance)
+        // --- Feature 4: Solo radares de mi ruta (por delante y en mi trayectoria) ---
+        val nearby = findCameraOnRoute(location, alertDistance)
 
         // --- Feature 6: Detect passed radars ---
         handlePassedRadars(location, alertDistance)
@@ -387,18 +389,36 @@ class RadarService : Service() {
     // Feature 4: Direction filtering
     // -------------------------------------------------------------------------
 
-    private fun filterCamerasByDirection(
-        cameras: List<SpeedCamera>,
-        vehicleBearing: Float?
-    ): List<SpeedCamera> {
-        // If we don't know the bearing (low speed), show all radars
-        if (vehicleBearing == null) return cameras
-        return cameras.filter { cam ->
-            // If radar has no azimut, always show it
-            if (!cam.hasAzimut) return@filter true
-            // Keep radar only if difference <= 90 degrees
-            angleDiff(vehicleBearing, cam.azimut) <= 90f
+    /**
+     * Radar más cercano que está en mi ruta: dentro del radio, por delante del vehículo y
+     * cerca de la trayectoria (vías paralelas, rotondas o calles laterales quedan fuera).
+     * Sin rumbo GPS fiable, se usa solo la distancia.
+     */
+    private fun findCameraOnRoute(location: Location, radius: Float): NearbyCamera? {
+        val heading: Float? = if (location.hasBearing()) location.bearing else null
+        val dLat = ProximityChecker.boundingBoxDelta(radius)
+        val dLon = ProximityChecker.lonDeltaForRadius(location.latitude, radius)
+        val res = FloatArray(2)
+        var best: NearbyCamera? = null
+
+        for (cam in nearbyCameras) {
+            if (abs(cam.lat - location.latitude) > dLat || abs(cam.lng - location.longitude) > dLon) continue
+            Location.distanceBetween(location.latitude, location.longitude, cam.lat, cam.lng, res)
+            val distance = res[0]
+            if (distance > radius) continue
+
+            if (heading != null) {
+                // Radar con sentido conocido: debe apuntar en mi mismo sentido
+                if (cam.hasAzimut && angleDiff(heading, cam.azimut) > 90f) continue
+                val rel = Math.toRadians(angleDiff(heading, res[1]).toDouble())
+                val forward = distance * cos(rel)
+                val lateral = distance * sin(rel)
+                if (forward <= 0.0 || lateral > LATERAL_BASE_M + LATERAL_PER_M * distance) continue
+            }
+
+            if (best == null || distance < best.distanceMeters) best = NearbyCamera(cam, distance)
         }
+        return best
     }
 
     private fun angleDiff(a: Float, b: Float): Float {
@@ -427,14 +447,18 @@ class RadarService : Service() {
                 continue
             }
 
-            val dist = FloatArray(1)
+            val dist = FloatArray(2)
             Location.distanceBetween(
                 location.latitude, location.longitude,
                 cam.lat, cam.lng,
                 dist
             )
 
-            if (dist[0] > PASS_THRESHOLD_M) {
+            // Superado: ya lo tengo por detrás (o muy lejos)
+            val behind = location.hasBearing() &&
+                    dist[0] * cos(Math.toRadians(angleDiff(location.bearing, dist[1]).toDouble())) < -PASSED_BEHIND_M
+
+            if (dist[0] > PASS_THRESHOLD_M || behind) {
                 // Camera is now beyond threshold
                 val wasRecentlyActive = (now - enteredAt) <= ACTIVE_WINDOW_MS
                 if (wasRecentlyActive && !passedCameraIds.contains(camId)) {
@@ -557,6 +581,10 @@ class RadarService : Service() {
 
     companion object {
         private const val TAG = "RadarService"
+        // Tolerancia lateral para considerar que un radar está en mi ruta: base + factor * distancia
+        private const val LATERAL_BASE_M = 20f
+        private const val LATERAL_PER_M = 0.10f
+        private const val PASSED_BEHIND_M = 15f
         const val CHANNEL_ID = "radar_service_channel"
         const val NOTIFICATION_ID = 1001
 
